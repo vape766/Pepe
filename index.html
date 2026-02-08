@@ -1,0 +1,771 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Clash of Pepes</title>
+    <style>
+        :root {
+            --bg-color: #202028;
+            --lane-color: #2a2a35;
+            --player-color: #4CAF50;
+            --enemy-color: #F44336;
+            --elixir-color: #9C27B0;
+        }
+        body {
+            margin: 0;
+            padding: 0;
+            background: #121212;
+            color: white;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            overflow: hidden;
+            touch-action: none;
+            user-select: none;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+        }
+
+        /* --- SPIELFELD --- */
+        #arena {
+            flex: 1;
+            position: relative;
+            background: var(--bg-color);
+            overflow: hidden;
+            display: flex;
+        }
+
+        .lane {
+            flex: 1;
+            position: relative;
+            border-left: 1px solid #444;
+            border-right: 1px solid #444;
+            background: repeating-linear-gradient(
+                0deg,
+                transparent,
+                transparent 49px,
+                rgba(255,255,255,0.05) 50px
+            );
+        }
+
+        .lane:first-child { border-left: none; }
+        .lane:last-child { border-right: none; }
+
+        /* Türme mit Bildern */
+        .tower {
+            position: absolute;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 80px;
+            height: 60px;
+            border-radius: 10px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-weight: bold;
+            font-size: 20px;
+            z-index: 5;
+            border: 3px solid white;
+            overflow: hidden;
+        }
+        
+        .tower-image {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            background: rgba(0,0,0,0.3);
+        }
+        
+        #enemy-tower { top: 10px; background: var(--enemy-color); }
+        #player-tower { bottom: 10px; background: var(--player-color); }
+        
+        .hp-bar {
+            position: absolute;
+            width: 100%;
+            height: 5px;
+            background: red;
+            bottom: -10px;
+            left: 0;
+        }
+        .hp-current { width: 100%; height: 100%; background: #0f0; transition: width 0.2s; }
+
+        /* --- EINHEITEN --- */
+        .unit {
+            position: absolute;
+            width: 50px;
+            height: 50px;
+            font-size: 35px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            transform: translate(-50%, -50%);
+            z-index: 10;
+            text-shadow: 0 0 5px black;
+            transition: left 0.1s, top 0.1s;
+        }
+        
+        .unit-image {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            border-radius: 50%;
+            background: rgba(0,0,0,0.3);
+            border: 2px solid rgba(255,255,255,0.3);
+        }
+        
+        .unit.attacking .unit-image { 
+            animation: attackGlow 0.5s infinite;
+            filter: drop-shadow(0 0 10px yellow);
+        }
+        
+        @keyframes attackGlow { 
+            0% { transform: scale(1); }
+            50% { transform: scale(1.1); }
+            100% { transform: scale(1); }
+        }
+        
+        .unit.player .unit-image {
+            border-color: var(--player-color);
+            box-shadow: 0 0 10px rgba(76, 175, 80, 0.5);
+        }
+        
+        .unit.enemy .unit-image {
+            border-color: var(--enemy-color);
+            box-shadow: 0 0 10px rgba(244, 67, 54, 0.5);
+            transform: scaleY(-1);
+        }
+
+        /* --- HUD --- */
+        #hud {
+            height: 180px;
+            background: #1a1a1a;
+            border-top: 2px solid #444;
+            display: flex;
+            flex-direction: column;
+            padding: 10px;
+        }
+
+        #elixir-container {
+            width: 100%;
+            height: 20px;
+            background: #333;
+            border-radius: 10px;
+            margin-bottom: 10px;
+            position: relative;
+            overflow: hidden;
+        }
+        #elixir-fill {
+            height: 100%;
+            width: 0%;
+            background: linear-gradient(90deg, var(--elixir-color), #e040fb);
+            transition: width 0.2s linear;
+        }
+        #elixir-text {
+            position: absolute;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 12px;
+            font-weight: bold;
+            text-shadow: 0 0 2px black;
+        }
+
+        #cards {
+            display: flex;
+            justify-content: space-around;
+            flex: 1;
+        }
+
+        .card {
+            background: linear-gradient(145deg, #2c2c36, #22222c);
+            border: 2px solid #555;
+            border-radius: 8px;
+            width: 22%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            position: relative;
+            transition: transform 0.1s, border-color 0.2s;
+        }
+        .card:hover { border-color: #777; }
+        .card:active { transform: scale(0.95); }
+        .card.disabled { opacity: 0.4; pointer-events: none; }
+        .card.selected { border-color: #ffeb3b; box-shadow: 0 0 10px #ffeb3b; }
+        
+        .card-cost {
+            position: absolute;
+            top: -5px; right: -5px;
+            background: var(--elixir-color);
+            border-radius: 50%;
+            width: 20px; height: 20px;
+            font-size: 12px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            border: 1px solid white;
+            font-weight: bold;
+            z-index: 2;
+        }
+        
+        .card-image {
+            width: 40px;
+            height: 40px;
+            object-fit: contain;
+            margin-bottom: 5px;
+        }
+        
+        .card-name { 
+            font-size: 10px; 
+            margin-top: 5px; 
+            text-align: center;
+            padding: 0 2px;
+        }
+
+        /* --- LANE SELECTION --- */
+        .lane-marker {
+            position: absolute;
+            width: 100%;
+            height: 50px;
+            opacity: 0.3;
+            pointer-events: none;
+            z-index: 2;
+        }
+        .lane-marker.active { 
+            opacity: 0.6; 
+            background: rgba(255, 255, 0, 0.2);
+            border: 2px dashed yellow;
+        }
+
+        /* --- SCREENS --- */
+        #game-over {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.9);
+            display: none;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 100;
+        }
+        
+        #result-title {
+            font-size: 3em;
+            text-shadow: 0 0 10px currentColor;
+            margin-bottom: 20px;
+        }
+        
+        button {
+            padding: 15px 30px;
+            font-size: 18px;
+            background: linear-gradient(145deg, var(--player-color), #2E7D32);
+            color: white;
+            border: none;
+            border-radius: 5px;
+            margin-top: 20px;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+        }
+        button:hover { 
+            transform: scale(1.05); 
+            box-shadow: 0 6px 8px rgba(0,0,0,0.4);
+        }
+        button:active { transform: scale(0.98); }
+
+        /* --- DEBUG INFO --- */
+        #debug {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: rgba(0,0,0,0.7);
+            padding: 5px;
+            border-radius: 5px;
+            font-size: 12px;
+            z-index: 1000;
+        }
+        
+        /* --- LOADING --- */
+        .loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 20px;
+            color: white;
+            z-index: 1001;
+        }
+    </style>
+</head>
+<body>
+
+<div id="loading" class="loading">Lade Bilder...</div>
+<div id="debug" style="display: none;"></div>
+
+<div id="arena">
+    <!-- 4 Spuren -->
+    <div class="lane" id="lane-0"></div>
+    <div class="lane" id="lane-1"></div>
+    <div class="lane" id="lane-2"></div>
+    <div class="lane" id="lane-3"></div>
+    
+    <!-- Turm Marker (in jeder Spur) -->
+    <div class="tower" id="enemy-tower">
+        <img src="https://www.directupload.net/images/240208/fhkxjw35.png" class="tower-image" alt="Enemy Tower">
+        <div class="hp-bar"><div class="hp-current" id="enemy-hp"></div></div>
+    </div>
+    <div class="tower" id="player-tower">
+        <img src="https://www.directupload.net/images/240208/eeddhmbv.png" class="tower-image" alt="Player Tower">
+        <div class="hp-bar"><div class="hp-current" id="player-hp"></div></div>
+    </div>
+    
+    <!-- Lane Selection Marker -->
+    <div class="lane-marker" id="lane-marker" style="display: none;"></div>
+</div>
+
+<div id="hud">
+    <div id="elixir-container">
+        <div id="elixir-fill"></div>
+        <div id="elixir-text">0 / 10</div>
+    </div>
+    <div id="cards">
+        <div class="card" data-type="hustler" onclick="selectCard('hustler')">
+            <div class="card-cost">3</div>
+            <img src="https://www.directupload.net/images/240208/eeddhmbv.png" class="card-image" alt="Hustler">
+            <div class="card-name">Hustler</div>
+        </div>
+        <div class="card" data-type="driveby" onclick="selectCard('driveby')">
+            <div class="card-cost">4</div>
+            <img src="https://www.directupload.net/images/240208/fhkxjw35.png" class="card-image" alt="Drive-By">
+            <div class="card-name">Drive-By</div>
+        </div>
+        <div class="card" data-type="whale" onclick="selectCard('whale')">
+            <div class="card-cost">6</div>
+            <img src="https://www.directupload.net/images/240208/eeddhmbv.png" class="card-image" alt="Whale">
+            <div class="card-name">Whale</div>
+        </div>
+        <div class="card" data-type="sniper" onclick="selectCard('sniper')">
+            <div class="card-cost">4</div>
+            <img src="https://www.directupload.net/images/240208/fhkxjw35.png" class="card-image" alt="Sniper">
+            <div class="card-name">Sniper</div>
+        </div>
+    </div>
+</div>
+
+<div id="game-over">
+    <h1 id="result-title">GEWONNEN!</h1>
+    <button onclick="location.reload()">Nochmal spielen</button>
+</div>
+
+<script>
+    // --- KONFIGURATION ---
+    const CONFIG = {
+        TOWER_HP: 1000,
+        ELIXIR_MAX: 10,
+        REGEN_RATE: 0.5,
+        LANE_COUNT: 4,
+        ENEMY_SPAWN_RATE: 0.005,
+        ENEMY_ELIXIR: 8,
+        ENEMY_REGEN_RATE: 0.3
+    };
+
+    // Bild URLs
+    const IMAGES = {
+        playerTower: 'https://www.directupload.net/images/240208/eeddhmbv.png',
+        enemyTower: 'https://www.directupload.net/images/240208/fhkxjw35.png',
+        playerUnit: 'https://www.directupload.net/images/240208/eeddhmbv.png',
+        enemyUnit: 'https://www.directupload.net/images/240208/fhkxjw35.png'
+    };
+
+    const UNIT_TYPES = {
+        hustler: { cost: 3, hp: 150, dmg: 30, speed: 1.5, range: 60, image: IMAGES.playerUnit, reload: 1000, target: 'ground' },
+        driveby: { cost: 4, hp: 80, dmg: 50, speed: 3.0, range: 100, image: IMAGES.enemyUnit, reload: 500, target: 'ground' },
+        whale:   { cost: 6, hp: 600, dmg: 20, speed: 0.5, range: 40, image: IMAGES.playerUnit, reload: 1500, target: 'ground' },
+        sniper:  { cost: 4, hp: 100, dmg: 100, speed: 1.0, range: 300, image: IMAGES.enemyUnit, reload: 2000, target: 'all' },
+        // Gegner Units
+        normie:  { cost: 3, hp: 120, dmg: 25, speed: 1.2, range: 60, image: IMAGES.enemyUnit, reload: 1000, target: 'ground' },
+        police:  { cost: 5, hp: 300, dmg: 40, speed: 1.0, range: 60, image: IMAGES.playerUnit, reload: 1200, target: 'ground' },
+        swat:    { cost: 6, hp: 400, dmg: 60, speed: 0.8, range: 80, image: IMAGES.enemyUnit, reload: 1500, target: 'all' }
+    };
+
+    // --- GAME STATE ---
+    let units = [];
+    let elixir = 5;
+    let enemyElixir = 5;
+    let selectedCard = null;
+    let gameOver = false;
+    let lastTime = 0;
+    let lanes = [];
+    let imagesLoaded = false;
+    
+    let towers = {
+        player: { 
+            hp: CONFIG.TOWER_HP, 
+            y: window.innerHeight - 180 - 40,
+            el: document.getElementById('player-hp'),
+            lane: -1
+        },
+        enemy: { 
+            hp: CONFIG.TOWER_HP, 
+            y: 40,
+            el: document.getElementById('enemy-hp'),
+            lane: -1
+        }
+    };
+
+    // --- BILD-VORLADUNG ---
+    function preloadImages() {
+        const imageUrls = [
+            IMAGES.playerTower,
+            IMAGES.enemyTower,
+            IMAGES.playerUnit,
+            IMAGES.enemyUnit
+        ];
+        
+        let loadedCount = 0;
+        const totalImages = imageUrls.length;
+        
+        imageUrls.forEach(url => {
+            const img = new Image();
+            img.onload = () => {
+                loadedCount++;
+                if (loadedCount === totalImages) {
+                    imagesLoaded = true;
+                    document.getElementById('loading').style.display = 'none';
+                    init();
+                }
+            };
+            img.onerror = () => {
+                console.error(`Failed to load image: ${url}`);
+                loadedCount++;
+                if (loadedCount === totalImages) {
+                    imagesLoaded = true;
+                    document.getElementById('loading').style.display = 'none';
+                    init();
+                }
+            };
+            img.src = url;
+        });
+    }
+
+    // --- INITIALISIERUNG ---
+    function init() {
+        if (!imagesLoaded) return;
+        
+        // Lane Positions berechnen
+        const arena = document.getElementById('arena');
+        const laneWidth = arena.clientWidth / CONFIG.LANE_COUNT;
+        
+        for (let i = 0; i < CONFIG.LANE_COUNT; i++) {
+            lanes.push({
+                id: i,
+                x: (i * laneWidth) + (laneWidth / 2),
+                width: laneWidth,
+                element: document.getElementById(`lane-${i}`)
+            });
+        }
+
+        // Event Listener für Lane Selection
+        arena.addEventListener('click', handleLaneClick);
+        
+        // Turm HP Bars
+        updateTowerHP();
+        
+        // Start Game Loop
+        lastTime = performance.now();
+        requestAnimationFrame(update);
+    }
+
+    // --- LANE SELECTION ---
+    function selectCard(type) {
+        if (gameOver || elixir < UNIT_TYPES[type].cost) return;
+        
+        // Deselect previous
+        if (selectedCard) {
+            document.querySelector(`.card[data-type="${selectedCard}"]`).classList.remove('selected');
+        }
+        
+        selectedCard = type;
+        document.querySelector(`.card[data-type="${type}"]`).classList.add('selected');
+        
+        // Show lane markers
+        const marker = document.getElementById('lane-marker');
+        marker.style.display = 'block';
+        marker.classList.add('active');
+        
+        // Marker auf jede Lane anwenden
+        const laneWidth = document.getElementById('arena').clientWidth / CONFIG.LANE_COUNT;
+        marker.style.width = laneWidth + 'px';
+    }
+
+    function handleLaneClick(e) {
+        if (!selectedCard || gameOver) return;
+        
+        const arena = document.getElementById('arena');
+        const rect = arena.getBoundingClientRect();
+        const clickX = e.clientX - rect.left;
+        const laneWidth = arena.clientWidth / CONFIG.LANE_COUNT;
+        
+        // Find lane
+        const laneIndex = Math.min(Math.floor(clickX / laneWidth), CONFIG.LANE_COUNT - 1);
+        
+        spawnUnit(selectedCard, 'player', laneIndex);
+        
+        // Reset selection
+        document.querySelector(`.card[data-type="${selectedCard}"]`).classList.remove('selected');
+        selectedCard = null;
+        const marker = document.getElementById('lane-marker');
+        marker.style.display = 'none';
+        marker.classList.remove('active');
+    }
+
+    // --- LOGIK ---
+    function update(time) {
+        if (gameOver) return;
+        const delta = time - lastTime;
+        lastTime = time;
+
+        // 1. Elixier Regen
+        if (elixir < CONFIG.ELIXIR_MAX) {
+            elixir += (delta / 1000) * CONFIG.REGEN_RATE;
+            elixir = Math.min(elixir, CONFIG.ELIXIR_MAX);
+        }
+        
+        // 2. Gegner Elixier
+        if (enemyElixir < CONFIG.ENEMY_ELIXIR) {
+            enemyElixir += (delta / 1000) * CONFIG.ENEMY_REGEN_RATE;
+            enemyElixir = Math.min(enemyElixir, CONFIG.ENEMY_ELIXIR);
+        }
+
+        // 3. Gegner KI
+        enemyAI();
+
+        // 4. Einheiten Logik
+        units.forEach(u => {
+            if (u.dead) return;
+
+            // Bewegung
+            const moveDir = u.team === 'player' ? -1 : 1;
+            u.y += u.stats.speed * moveDir;
+            
+            // Grenzen checken
+            u.y = Math.max(50, Math.min(window.innerHeight - 230, u.y));
+            
+            // Position updaten
+            u.el.style.top = u.y + 'px';
+            u.el.style.left = lanes[u.lane].x + 'px';
+
+            // Ziel finden
+            findTargetAndAttack(u, time);
+        });
+
+        // Tote entfernen
+        units = units.filter(u => !u.dead);
+        document.querySelectorAll('.unit.dead').forEach(el => el.remove());
+
+        // UI updaten
+        updateUI();
+
+        requestAnimationFrame(update);
+    }
+
+    function findTargetAndAttack(unit, time) {
+        let closestTarget = null;
+        let closestDist = Infinity;
+
+        // Nach gegnerischen Einheiten suchen
+        units.forEach(other => {
+            if (unit.team === other.team || other.dead) return;
+            if (unit.lane !== other.lane) return; // Nur gleiche Spur
+            
+            const dist = Math.abs(unit.y - other.y);
+            const isAhead = (unit.team === 'player' && other.y < unit.y) || 
+                          (unit.team === 'enemy' && other.y > unit.y);
+            
+            if (isAhead && dist < unit.stats.range && dist < closestDist) {
+                closestDist = dist;
+                closestTarget = other;
+            }
+        });
+
+        // Wenn keine Einheit, check Turm
+        if (!closestTarget) {
+            const tower = unit.team === 'player' ? towers.enemy : towers.player;
+            const distToTower = Math.abs(unit.y - tower.y);
+            
+            if (distToTower <= unit.stats.range) {
+                closestTarget = { type: 'tower', team: unit.team === 'player' ? 'enemy' : 'player' };
+            }
+        }
+
+        // Aktion ausführen
+        if (closestTarget) {
+            unit.el.classList.add('attacking');
+            if (time - unit.lastAttack > unit.stats.reload) {
+                unit.lastAttack = time;
+                dealDamage(closestTarget, unit.stats.dmg);
+            }
+        } else {
+            unit.el.classList.remove('attacking');
+        }
+    }
+
+    function enemyAI() {
+        if (Math.random() < CONFIG.ENEMY_SPAWN_RATE && enemyElixir >= 3) {
+            const types = ['normie', 'police', 'swat'];
+            const availableTypes = types.filter(t => UNIT_TYPES[t].cost <= enemyElixir);
+            
+            if (availableTypes.length > 0) {
+                const type = availableTypes[Math.floor(Math.random() * availableTypes.length)];
+                const lane = Math.floor(Math.random() * CONFIG.LANE_COUNT);
+                
+                enemyElixir -= UNIT_TYPES[type].cost;
+                spawnUnit(type, 'enemy', lane);
+            }
+        }
+    }
+
+    function spawnUnit(typeKey, team, lane) {
+        if (gameOver) return;
+        const stats = UNIT_TYPES[typeKey];
+        
+        if (team === 'player' && elixir < stats.cost) return;
+        if (team === 'enemy' && enemyElixir < stats.cost) return;
+
+        if (team === 'player') {
+            elixir -= stats.cost;
+        }
+
+        const startY = team === 'player' ? towers.player.y - 50 : towers.enemy.y + 50;
+        
+        const el = document.createElement('div');
+        el.className = `unit ${team}`;
+        
+        const img = document.createElement('img');
+        img.src = stats.image;
+        img.className = 'unit-image';
+        img.alt = typeKey;
+        
+        el.appendChild(img);
+        el.style.top = startY + 'px';
+        el.style.left = lanes[lane].x + 'px';
+
+        document.getElementById('arena').appendChild(el);
+
+        units.push({
+            team: team,
+            lane: lane,
+            y: startY,
+            hp: stats.hp,
+            maxHp: stats.hp,
+            stats: stats,
+            lastAttack: 0,
+            el: el,
+            img: img,
+            dead: false
+        });
+    }
+
+    function dealDamage(target, dmg) {
+        if (target.type === 'tower') {
+            towers[target.team].hp -= dmg;
+            updateTowerHP();
+            
+            // Effekt
+            const towerEl = document.getElementById(`${target.team}-tower`);
+            towerEl.style.transform = 'translateX(-50%) scale(1.1)';
+            setTimeout(() => towerEl.style.transform = 'translateX(-50%) scale(1.0)', 100);
+
+            if (towers[target.team].hp <= 0) {
+                endGame(target.team === 'enemy' ? 'SIEG' : 'NIEDERLAGE');
+            }
+        } else {
+            target.hp -= dmg;
+            
+            // Damage Effect
+            target.img.style.filter = 'brightness(1.5)';
+            setTimeout(() => target.img.style.filter = '', 100);
+            
+            if (target.hp <= 0) {
+                target.dead = true;
+                target.el.classList.add('dead');
+                target.el.style.opacity = '0';
+                setTimeout(() => {
+                    if (target.el.parentNode) {
+                        target.el.remove();
+                    }
+                }, 300);
+            }
+        }
+    }
+
+    function updateTowerHP() {
+        const playerPct = (towers.player.hp / CONFIG.TOWER_HP) * 100;
+        const enemyPct = (towers.enemy.hp / CONFIG.TOWER_HP) * 100;
+        
+        document.getElementById('player-hp').style.width = Math.max(0, playerPct) + '%';
+        document.getElementById('enemy-hp').style.width = Math.max(0, enemyPct) + '%';
+    }
+
+    function updateUI() {
+        // Elixir Bar
+        const pct = (elixir / CONFIG.ELIXIR_MAX) * 100;
+        document.getElementById('elixir-fill').style.width = pct + '%';
+        document.getElementById('elixir-text').innerText = Math.floor(elixir) + ' / ' + CONFIG.ELIXIR_MAX;
+
+        // Karten
+        document.querySelectorAll('.card').forEach(card => {
+            const type = card.dataset.type;
+            if (elixir < UNIT_TYPES[type].cost) {
+                card.classList.add('disabled');
+            } else {
+                card.classList.remove('disabled');
+            }
+        });
+    }
+
+    function endGame(result) {
+        gameOver = true;
+        document.getElementById('game-over').style.display = 'flex';
+        const title = document.getElementById('result-title');
+        title.innerText = result;
+        title.style.color = result === 'SIEG' ? '#4CAF50' : '#F44336';
+        
+        // End Animation
+        setTimeout(() => {
+            title.style.transform = 'scale(1.1)';
+            setTimeout(() => {
+                title.style.transform = 'scale(1)';
+            }, 500);
+        }, 100);
+    }
+
+    // Start
+    window.addEventListener('load', preloadImages);
+    window.addEventListener('resize', () => {
+        if (!imagesLoaded) return;
+        
+        // Lane Positions neu berechnen
+        const arena = document.getElementById('arena');
+        const laneWidth = arena.clientWidth / CONFIG.LANE_COUNT;
+        
+        lanes.forEach((lane, i) => {
+            lane.x = (i * laneWidth) + (laneWidth / 2);
+            lane.width = laneWidth;
+        });
+        
+        // Units neu positionieren
+        units.forEach(u => {
+            u.el.style.left = lanes[u.lane].x + 'px';
+        });
+        
+        // Lane marker anpassen
+        if (selectedCard) {
+            const marker = document.getElementById('lane-marker');
+            marker.style.width = laneWidth + 'px';
+        }
+    });
+
+</script>
+</body>
+</html>
